@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!--
+    The OnePlus 15 manifest currently pins two Android test-harness prebuilts
+    to CodeLinaro commits/branches that are no longer served. Neither project
+    is used by the OnePlus kernel build, so omit only these two projects.
+  -->
+  <remove-project name="kernel_platform/prebuilts/asuite"/>
+  <remove-project name="kernel_platform/tools/tradefederation/prebuilts"/>
+</manifest>
+

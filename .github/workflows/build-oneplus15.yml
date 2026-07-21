@@ -1,0 +1,74 @@
+name: Build OnePlus 15 Droidspaces kernel
+
+on:
+  # Manual only: the official source snapshot does not exactly match the
+  # owner's newer OxygenOS build, and GitHub-hosted disk is tight for this job.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneplus15-droidspaces-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out workflow repository
+        uses: actions/checkout@v4
+
+      - name: Reclaim ephemeral runner disk space
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]]; then
+            echo "Refusing cleanup outside a GitHub-hosted ephemeral runner" >&2
+            exit 1
+          fi
+          df -h
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          sudo mkdir -p /mnt/oneplus15-build
+          sudo chown "$USER:$USER" /mnt/oneplus15-build
+          df -h
+
+      - name: Install host dependencies and repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential cpio curl flex git git-lfs \
+            libelf-dev libssl-dev lz4 python3 rsync unzip zip zstd
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/bin/repo"
+          chmod 0755 "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Sync, patch and build official OnePlus source
+        shell: bash
+        env:
+          BUILD_ROOT: /mnt/oneplus15-build
+        run: bash scripts/build-oneplus15.sh
+
+      - name: Upload kernel image and verification files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneplus15-droidspaces-6.12.23-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30

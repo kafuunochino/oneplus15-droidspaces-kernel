@@ -1,0 +1,59 @@
+diff --git a/ipc/msgutil.c b/ipc/msgutil.c
+index c7be0c7..2f0e21a 100644
+--- a/ipc/msgutil.c
++++ b/ipc/msgutil.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/spinlock.h>
++#include <linux/export.h>
+ #include <linux/init.h>
+ #include <linux/security.h>
+ #include <linux/slab.h>
+@@ -30,5 +31,6 @@ struct ipc_namespace init_ipc_ns = {
+ #endif
+ };
++EXPORT_SYMBOL_GPL(init_ipc_ns);
+ 
+ struct msg_msgseg {
+ 	struct msg_msgseg *next;
+diff --git a/ipc/namespace.c b/ipc/namespace.c
+index 4df91ce..a7acd80 100644
+--- a/ipc/namespace.c
++++ b/ipc/namespace.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/ipc.h>
++#include <linux/export.h>
+ #include <linux/msg.h>
+ #include <linux/ipc_namespace.h>
+ #include <linux/rcupdate.h>
+@@ -198,6 +199,7 @@ void put_ipc_ns(struct ipc_namespace *ns)
+ 			schedule_work(&free_ipc_work);
+ 	}
+ }
++EXPORT_SYMBOL_GPL(put_ipc_ns);
+ 
+ static inline struct ipc_namespace *to_ipc_ns(struct ns_common *ns)
+ {
+diff --git a/gki/aarch64/symbols/qcom b/gki/aarch64/symbols/qcom
+index 5b27ca2..d5b60bd 100644
+--- a/gki/aarch64/symbols/qcom
++++ b/gki/aarch64/symbols/qcom
+@@ -1509,6 +1509,7 @@
+   inet_ioctl
+   __inet_lookup_established
+   init_dummy_netdev
+   init_iova_domain
++  init_ipc_ns
+   init_net
+   init_pid_ns
+@@ -2518,6 +2519,7 @@
+   __put_cred
+   put_device
+   put_disk
+   put_iova_domain
++  put_ipc_ns
+   putback_movable_pages
+   __put_net
