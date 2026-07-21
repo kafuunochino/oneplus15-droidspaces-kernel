@@ -1,0 +1,18 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 9fd9d38..c249680 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -890,11 +890,11 @@ struct task_struct {
+ 	union {
+ 		char __kabi_ignored_0;
+ 		struct sysv_sem			sysvsem;
+-	}__attribute__((packed));
++	};
+ 	union {
+ 		char __kabi_ignored_1;
+ 		struct sysv_shm			sysvshm;
+-	}__attribute__((packed));
++	};
+ #endif
+ 
+ 	struct sched_entity		se;

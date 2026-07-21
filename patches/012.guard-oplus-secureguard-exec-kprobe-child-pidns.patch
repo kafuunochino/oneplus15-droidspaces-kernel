@@ -1,0 +1,93 @@
+diff --git a/arch/arm64/kernel/probes/kprobes.c b/arch/arm64/kernel/probes/kprobes.c
+--- a/arch/arm64/kernel/probes/kprobes.c
++++ b/arch/arm64/kernel/probes/kprobes.c
+@@ -253,7 +253,8 @@ post_kprobe_handler(struct kprobe *cur, struct kprobe_ctlblk *kcb, struct pt_regs
+ 	}
+ 	/* call post handler */
+ 	kcb->kprobe_status = KPROBE_HIT_SSDONE;
+-	if (cur->post_handler)
++	if (cur->post_handler &&
++	    !kprobe_skip_handlers_in_child_pidns(cur))
+ 		cur->post_handler(cur, regs, 0);
+ 
+ 	reset_current_kprobe();
+@@ -327,7 +328,9 @@ kprobe_breakpoint_handler(struct pt_regs *regs, unsigned long esr)
+ 		 * modify the execution path and not need to single-step
+ 		 * Let's just reset current kprobe and exit.
+ 		 */
+-		if (!p->pre_handler || !p->pre_handler(p, regs))
++		if (kprobe_skip_handlers_in_child_pidns(p))
++			setup_singlestep(p, regs, kcb, 0);
++		else if (!p->pre_handler || !p->pre_handler(p, regs))
+ 			setup_singlestep(p, regs, kcb, 0);
+ 		else
+ 			reset_current_kprobe();
+diff --git a/include/linux/kprobes.h b/include/linux/kprobes.h
+--- a/include/linux/kprobes.h
++++ b/include/linux/kprobes.h
+@@ -400,6 +400,7 @@ static inline struct kprobe_ctlblk *get_kprobe_ctlblk(void)
+ }
+ 
+ kprobe_opcode_t *kprobe_lookup_name(const char *name, unsigned int offset);
++bool kprobe_skip_handlers_in_child_pidns(struct kprobe *p);
+ kprobe_opcode_t *arch_adjust_kprobe_addr(unsigned long addr, unsigned long offset, bool *on_func_entry);
+ 
+ int register_kprobe(struct kprobe *p);
+diff --git a/kernel/kprobes.c b/kernel/kprobes.c
+--- a/kernel/kprobes.c
++++ b/kernel/kprobes.c
+@@ -33,6 +33,7 @@
+ #include <linux/memory.h>
+ #include <linux/ftrace.h>
+ #include <linux/cpu.h>
++#include <linux/pid_namespace.h>
+ #include <linux/jump_label.h>
+ #include <linux/static_call.h>
+ #include <linux/perf_event.h>
+@@ -66,13 +67,34 @@ static bool kprobes_all_disarmed;
+ /* This protects 'kprobe_table' and 'optimizing_list' */
+ static DEFINE_MUTEX(kprobe_mutex);
+ static DEFINE_PER_CPU(struct kprobe *, kprobe_instance);
++static kprobe_opcode_t *child_pidns_exec_probe_addr __ro_after_init;
+ 
+ kprobe_opcode_t * __weak kprobe_lookup_name(const char *name,
+ 					unsigned int __unused)
+ {
+ 	return ((kprobe_opcode_t *)(kallsyms_lookup_name(name)));
+ }
+ 
++/*
++ * The OnePlus secure-guard module places a kretprobe on
++ * do_execveat_common().  For a non-leader thread it passes current->tgid,
++ * which is a global PID, to find_task_by_vpid().  In a child PID namespace
++ * that lookup can return NULL, but the closed-source handler immediately
++ * dereferences the result.
++ *
++ * Preserve every probe for Android tasks.  For child-PID-namespace tasks,
++ * skip handlers only at this one exec target while still single-stepping the
++ * original instruction.  This avoids changing find_task_by_vpid() semantics
++ * and leaves unrelated kprobes available to the container.
++ */
++bool __kprobes kprobe_skip_handlers_in_child_pidns(struct kprobe *p)
++{
++	return unlikely(child_pidns_exec_probe_addr &&
++			p->addr == child_pidns_exec_probe_addr &&
++			!task_is_in_init_pid_ns(current));
++}
++NOKPROBE_SYMBOL(kprobe_skip_handlers_in_child_pidns);
++
+ /*
+  * Blacklist -- list of 'struct kprobe_blacklist_entry' to store info where
+  * kprobes can not probe.
+@@ -2721,6 +2743,11 @@ static int __init init_kprobes(void)
+ 	for (i = 0; i < KPROBE_TABLE_SIZE; i++)
+ 		INIT_HLIST_HEAD(&kprobe_table[i]);
+ 
++	child_pidns_exec_probe_addr =
++		kprobe_lookup_name("do_execveat_common", 0);
++	if (!child_pidns_exec_probe_addr)
++		pr_warn("Failed to resolve do_execveat_common; child PID namespace exec guard is inactive\n");
++
+ 	err = populate_kprobe_blacklist(__start_kprobe_blacklist,
+ 					__stop_kprobe_blacklist);
+ 	if (err)

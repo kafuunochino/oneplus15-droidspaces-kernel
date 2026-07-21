@@ -1,0 +1,32 @@
+diff --git a/drivers/cpufreq/cpufreq_times.c b/drivers/cpufreq/cpufreq_times.c
+index 3b0a94c47..805483e26 100644
+--- a/drivers/cpufreq/cpufreq_times.c
++++ b/drivers/cpufreq/cpufreq_times.c
+@@ -18,6 +18,7 @@
+ #include <linux/cpufreq.h>
+ #include <linux/cpufreq_times.h>
+ #include <linux/jiffies.h>
++#include <linux/pid_namespace.h>
+ #include <linux/sched.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+@@ -148,7 +149,17 @@ void cpufreq_acct_update_power(struct task_struct *p, u64 cputime)
+ 	    p->time_in_state)
+ 		p->time_in_state[state] += cputime;
+ 	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
+ 
+-	trace_android_vh_cpufreq_acct_update_power(cputime, p, state);
++	/*
++	 * The OnePlus Midas consumer looks up p->tgid with
++	 * find_task_by_vpid().  That mixes a global task ID with the active
++	 * child PID namespace and can return NULL; the out-of-tree consumer
++	 * then dereferences the result from timer-interrupt context.  Keep
++	 * generic time-in-state accounting for every task, but expose only
++	 * initial-PID-namespace tasks to this vendor hook.  The stock module
++	 * remains unchanged for all Android tasks.
++	 */
++	if (task_is_in_init_pid_ns(p))
++		trace_android_vh_cpufreq_acct_update_power(cputime, p, state);
+ }
+ 
+ static int cpufreq_times_get_index(struct cpu_freqs *freqs, unsigned int freq)

@@ -1,0 +1,59 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -885,17 +885,6 @@ struct task_struct {
+ 	int				normal_prio;
+ 	unsigned int			rt_priority;
+ 
+-#ifdef CONFIG_SYSVIPC
+-	union {
+-		char __kabi_ignored_0;
+-		struct sysv_sem			sysvsem;
+-	};
+-	union {
+-		char __kabi_ignored_1;
+-		struct sysv_shm			sysvshm;
+-	};
+-#endif
+-
+ 	struct sched_entity		se;
+ 	struct sched_rt_entity		rt;
+ 	struct sched_dl_entity		dl;
+@@ -1203,9 +1192,5 @@ struct task_struct {
+ 	struct nameidata		*nameidata;
+ 
+-#ifdef CONFIG_SYSVIPC
+-	// struct sysv_sem			sysvsem;
+-	// struct sysv_shm			sysvshm;
+-#endif
+ #ifdef CONFIG_DETECT_HUNG_TASK
+ 	unsigned long			last_switch_count;
+ 	unsigned long			last_switch_time;
+@@ -1662,8 +1647,24 @@ struct task_struct {
+ 	struct callback_head		l1d_flush_kill;
+ #endif
+-	ANDROID_KABI_RESERVE(1);
+-	ANDROID_KABI_RESERVE(2);
+-	ANDROID_KABI_RESERVE(3);
++#ifdef CONFIG_SYSVIPC
++	/*
++	 * Keep the frozen task_struct layout intact by consuming the official
++	 * Android kABI reserve slots. sysv_sem is 8 bytes and sysv_shm is 16
++	 * bytes on arm64, so slots 1-3 are an exact fit.
++	 */
++	ANDROID_KABI_USE(1, struct sysv_sem sysvsem);
++	_ANDROID_KABI_REPLACE(
++		ANDROID_KABI_RESERVE(2);
++		ANDROID_KABI_RESERVE(3),
++		struct {
++			struct sysv_shm sysvshm;
++		}
++	);
++#else
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++#endif
+ 	ANDROID_KABI_RESERVE(4);
+ 	ANDROID_KABI_RESERVE(5);
+ 	ANDROID_KABI_RESERVE(6);

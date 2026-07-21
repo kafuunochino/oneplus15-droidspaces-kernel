@@ -1,0 +1,351 @@
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+index 85b7d97bb..e8f4a99e4 100644
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -1,4 +1,6 @@
+ CONFIG_LOCALVERSION="-4k"
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
+ CONFIG_AUDIT=y
+ CONFIG_TIME_KUNIT_TEST=m
+ CONFIG_NO_HZ=y
+@@ -40,7 +42,6 @@ CONFIG_CPUSETS_V1=y
+ CONFIG_CGROUP_CPUACCT=y
+ CONFIG_CGROUP_BPF=y
+ CONFIG_NAMESPACES=y
+-# CONFIG_PID_NS is not set
+ CONFIG_RT_SOFTIRQ_AWARE_SCHED=y
+ # CONFIG_RD_BZIP2 is not set
+ # CONFIG_RD_LZMA is not set
+@@ -319,6 +320,7 @@ CONFIG_PCIE_KIRIN=y
+ CONFIG_PCIE_DW_PLAT_EP=y
+ CONFIG_PCIE_QCOM=y
+ CONFIG_PCI_ENDPOINT=y
++CONFIG_DEVTMPFS=y
+ CONFIG_FW_LOADER_USER_HELPER=y
+ # CONFIG_FW_CACHE is not set
+ CONFIG_REGMAP_KUNIT=m
+@@ -765,6 +767,7 @@ CONFIG_CRYPTO_SHA2_ARM64_CE=y
+ CONFIG_CRYPTO_SHA512_ARM64_CE=y
+ CONFIG_CRYPTO_POLYVAL_ARM64_CE=y
+ CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
++CONFIG_SYSTEM_TRUSTED_KEYS="certs/oneplus-stock-gki.pem"
+ CONFIG_TRACE_MMIO_ACCESS=y
+ CONFIG_CRC_CCITT=y
+ CONFIG_XZ_DEC=y
+diff --git a/arch/arm64/kernel/probes/kprobes.c b/arch/arm64/kernel/probes/kprobes.c
+index 4268678d0..69c1706ec 100644
+--- a/arch/arm64/kernel/probes/kprobes.c
++++ b/arch/arm64/kernel/probes/kprobes.c
+@@ -255,7 +255,8 @@ post_kprobe_handler(struct kprobe *cur, struct kprobe_ctlblk *kcb, struct pt_reg
+ 	}
+ 	/* call post handler */
+ 	kcb->kprobe_status = KPROBE_HIT_SSDONE;
+-	if (cur->post_handler)
++	if (cur->post_handler &&
++	    !kprobe_skip_handlers_in_child_pidns(cur))
+ 		cur->post_handler(cur, regs, 0);
+ 
+ 	reset_current_kprobe();
+@@ -326,7 +327,9 @@ kprobe_breakpoint_handler(struct pt_regs *regs, unsigned long esr)
+ 		 * modify the execution path and not need to single-step
+ 		 * Let's just reset current kprobe and exit.
+ 		 */
+-		if (!p->pre_handler || !p->pre_handler(p, regs))
++		if (kprobe_skip_handlers_in_child_pidns(p))
++			setup_singlestep(p, regs, kcb, 0);
++		else if (!p->pre_handler || !p->pre_handler(p, regs))
+ 			setup_singlestep(p, regs, kcb, 0);
+ 		else
+ 			reset_current_kprobe();
+diff --git a/drivers/cpufreq/cpufreq_times.c b/drivers/cpufreq/cpufreq_times.c
+index aeb7b7b0b..5b4b91b13 100644
+--- a/drivers/cpufreq/cpufreq_times.c
++++ b/drivers/cpufreq/cpufreq_times.c
+@@ -16,6 +16,7 @@
+ #include <linux/cpufreq.h>
+ #include <linux/cpufreq_times.h>
+ #include <linux/jiffies.h>
++#include <linux/pid_namespace.h>
+ #include <linux/sched.h>
+ #include <linux/seq_file.h>
+ #include <linux/slab.h>
+@@ -148,7 +149,17 @@ void cpufreq_acct_update_power(struct task_struct *p, u64 cputime)
+ 		p->time_in_state[state] += cputime;
+ 	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
+ 
+-	trace_android_vh_cpufreq_acct_update_power(cputime, p, state);
++	/*
++	 * The OnePlus Midas consumer looks up p->tgid with
++	 * find_task_by_vpid().  That mixes a global task ID with the active
++	 * child PID namespace and can return NULL; the out-of-tree consumer
++	 * then dereferences the result from timer-interrupt context.  Keep
++	 * generic time-in-state accounting for every task, but expose only
++	 * initial-PID-namespace tasks to this vendor hook.  The stock module
++	 * remains unchanged for all Android tasks.
++	 */
++	if (task_is_in_init_pid_ns(p))
++		trace_android_vh_cpufreq_acct_update_power(cputime, p, state);
+ }
+ 
+ static int cpufreq_times_get_index(struct cpu_freqs *freqs, unsigned int freq)
+diff --git a/gki/aarch64/symbols/qcom b/gki/aarch64/symbols/qcom
+index 5b27ca2f0..a8b46f90a 100644
+--- a/gki/aarch64/symbols/qcom
++++ b/gki/aarch64/symbols/qcom
+@@ -1510,6 +1510,7 @@
+   __inet_lookup_established
+   init_dummy_netdev
+   init_iova_domain
++  init_ipc_ns
+   init_net
+   init_pid_ns
+   init_pseudo
+@@ -2519,6 +2520,7 @@
+   put_device
+   put_disk
+   put_iova_domain
++  put_ipc_ns
+   putback_movable_pages
+   __put_net
+   put_pid
+diff --git a/include/linux/kprobes.h b/include/linux/kprobes.h
+index 8c4f3bb24..848ad010c 100644
+--- a/include/linux/kprobes.h
++++ b/include/linux/kprobes.h
+@@ -400,6 +400,7 @@ static inline struct kprobe_ctlblk *get_kprobe_ctlblk(void)
+ }
+ 
+ kprobe_opcode_t *kprobe_lookup_name(const char *name, unsigned int offset);
++bool kprobe_skip_handlers_in_child_pidns(struct kprobe *p);
+ kprobe_opcode_t *arch_adjust_kprobe_addr(unsigned long addr, unsigned long offset, bool *on_func_entry);
+ 
+ int register_kprobe(struct kprobe *p);
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index da3984c17..577495048 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1191,10 +1191,6 @@ struct task_struct {
+ 
+ 	struct nameidata		*nameidata;
+ 
+-#ifdef CONFIG_SYSVIPC
+-	struct sysv_sem			sysvsem;
+-	struct sysv_shm			sysvshm;
+-#endif
+ #ifdef CONFIG_DETECT_HUNG_TASK
+ 	unsigned long			last_switch_count;
+ 	unsigned long			last_switch_time;
+@@ -1650,9 +1646,20 @@ struct task_struct {
+ 	 */
+ 	struct callback_head		l1d_flush_kill;
+ #endif
++#ifdef CONFIG_SYSVIPC
++	/*
++	 * Keep the frozen task_struct layout intact with Android kABI slots.
++	 * Slot 1 stores sysv_sem, slot 2 stores a pointer to separately allocated
++	 * sysv_shm task state, and slot 3 remains reserved for vendor modules.
++	 */
++	ANDROID_KABI_USE(1, struct sysv_sem sysvsem);
++	ANDROID_KABI_USE(2, struct sysv_shm *sysvshm);
++	ANDROID_KABI_RESERVE(3);
++#else
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
+ 	ANDROID_KABI_RESERVE(3);
++#endif
+ 	ANDROID_KABI_RESERVE(4);
+ 	ANDROID_KABI_RESERVE(5);
+ 	ANDROID_KABI_RESERVE(6);
+diff --git a/include/linux/shm.h b/include/linux/shm.h
+index 1d3d3ae95..31d87d89f 100644
+--- a/include/linux/shm.h
++++ b/include/linux/shm.h
+@@ -17,7 +17,7 @@ struct sysv_shm {
+ long do_shmat(int shmid, char __user *shmaddr, int shmflg, unsigned long *addr,
+ 	      unsigned long shmlba);
+ void exit_shm(struct task_struct *task);
+-#define shm_init_task(task) INIT_LIST_HEAD(&(task)->sysvshm.shm_clist)
++#define shm_init_task(task) ((task)->sysvshm = NULL)
+ #else
+ struct sysv_shm {
+ 	/* empty */
+diff --git a/ipc/msgutil.c b/ipc/msgutil.c
+index c7be0c792..e1a26b773 100644
+--- a/ipc/msgutil.c
++++ b/ipc/msgutil.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/spinlock.h>
++#include <linux/export.h>
+ #include <linux/init.h>
+ #include <linux/security.h>
+ #include <linux/slab.h>
+@@ -33,6 +34,7 @@ struct ipc_namespace init_ipc_ns = {
+ 	.ns.ops = &ipcns_operations,
+ #endif
+ };
++EXPORT_SYMBOL_GPL(init_ipc_ns);
+ 
+ struct msg_msgseg {
+ 	struct msg_msgseg *next;
+diff --git a/ipc/namespace.c b/ipc/namespace.c
+index 4df91ceee..6ed5aff03 100644
+--- a/ipc/namespace.c
++++ b/ipc/namespace.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/ipc.h>
++#include <linux/export.h>
+ #include <linux/msg.h>
+ #include <linux/ipc_namespace.h>
+ #include <linux/rcupdate.h>
+@@ -207,6 +208,7 @@ void put_ipc_ns(struct ipc_namespace *ns)
+ 			schedule_work(&free_ipc_work);
+ 	}
+ }
++EXPORT_SYMBOL_GPL(put_ipc_ns);
+ 
+ static inline struct ipc_namespace *to_ipc_ns(struct ns_common *ns)
+ {
+diff --git a/ipc/shm.c b/ipc/shm.c
+index 99564c870..9acd16f06 100644
+--- a/ipc/shm.c
++++ b/ipc/shm.c
+@@ -436,21 +436,53 @@ void shm_destroy_orphaned(struct ipc_namespace *ns)
+ 	up_write(&shm_ids(ns).rwsem);
+ }
+ 
++static int shm_ensure_task_state(struct task_struct *task)
++{
++	struct sysv_shm *state;
++
++	if (likely(READ_ONCE(task->sysvshm)))
++		return 0;
++
++	state = kmalloc(sizeof(*state), GFP_KERNEL);
++	if (!state)
++		return -ENOMEM;
++	INIT_LIST_HEAD(&state->shm_clist);
++
++	/*
++	 * newseg() currently calls this only for current, but publish under
++	 * task_lock so exit_shm() and future callers have one clear lifetime
++	 * rule.  Losing a hypothetical race only costs this temporary object.
++	 */
++	task_lock(task);
++	if (!task->sysvshm) {
++		task->sysvshm = state;
++		state = NULL;
++	}
++	task_unlock(task);
++
++	kfree(state);
++	return 0;
++}
++
+ /* Locking assumes this will only be called with task == current */
+ void exit_shm(struct task_struct *task)
+ {
+ 	for (;;) {
+ 		struct shmid_kernel *shp;
+ 		struct ipc_namespace *ns;
++		struct sysv_shm *state;
+ 
+ 		task_lock(task);
++		state = task->sysvshm;
+ 
+-		if (list_empty(&task->sysvshm.shm_clist)) {
++		if (!state || list_empty(&state->shm_clist)) {
++			task->sysvshm = NULL;
+ 			task_unlock(task);
++			kfree(state);
+ 			break;
+ 		}
+ 
+-		shp = list_first_entry(&task->sysvshm.shm_clist, struct shmid_kernel,
++		shp = list_first_entry(&state->shm_clist, struct shmid_kernel,
+ 				shm_clist);
+ 
+ 		/*
+@@ -716,6 +748,10 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
+ 			ns->shm_tot + numpages > ns->shm_ctlall)
+ 		return -ENOSPC;
+ 
++	error = shm_ensure_task_state(current);
++	if (error)
++		return error;
++
+ 	shp = kmalloc(sizeof(*shp), GFP_KERNEL_ACCOUNT);
+ 	if (unlikely(!shp))
+ 		return -ENOMEM;
+@@ -779,7 +815,7 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
+ 	shp->ns = ns;
+ 
+ 	task_lock(current);
+-	list_add(&shp->shm_clist, &current->sysvshm.shm_clist);
++	list_add(&shp->shm_clist, &current->sysvshm->shm_clist);
+ 	task_unlock(current);
+ 
+ 	/*
+diff --git a/kernel/kprobes.c b/kernel/kprobes.c
+index da59c68df..d0a161ab2 100644
+--- a/kernel/kprobes.c
++++ b/kernel/kprobes.c
+@@ -35,6 +35,7 @@
+ #include <linux/memory.h>
+ #include <linux/ftrace.h>
+ #include <linux/cpu.h>
++#include <linux/pid_namespace.h>
+ #include <linux/jump_label.h>
+ #include <linux/static_call.h>
+ #include <linux/perf_event.h>
+@@ -66,6 +67,7 @@ static bool kprobes_all_disarmed;
+ /* This protects 'kprobe_table' and 'optimizing_list' */
+ static DEFINE_MUTEX(kprobe_mutex);
+ static DEFINE_PER_CPU(struct kprobe *, kprobe_instance);
++static kprobe_opcode_t *child_pidns_exec_probe_addr __ro_after_init;
+ 
+ kprobe_opcode_t * __weak kprobe_lookup_name(const char *name,
+ 					unsigned int __unused)
+@@ -73,6 +75,26 @@ kprobe_opcode_t * __weak kprobe_lookup_name(const char *name,
+ 	return ((kprobe_opcode_t *)(kallsyms_lookup_name(name)));
+ }
+ 
++/*
++ * The OnePlus secure-guard module places a kretprobe on
++ * do_execveat_common().  For a non-leader thread it passes current->tgid,
++ * which is a global PID, to find_task_by_vpid().  In a child PID namespace
++ * that lookup can return NULL, but the closed-source handler immediately
++ * dereferences the result.
++ *
++ * Preserve every probe for Android tasks.  For child-PID-namespace tasks,
++ * skip handlers only at this one exec target while still single-stepping the
++ * original instruction.  This avoids changing find_task_by_vpid() semantics
++ * and leaves unrelated kprobes available to the container.
++ */
++bool __kprobes kprobe_skip_handlers_in_child_pidns(struct kprobe *p)
++{
++	return unlikely(child_pidns_exec_probe_addr &&
++			p->addr == child_pidns_exec_probe_addr &&
++			!task_is_in_init_pid_ns(current));
++}
++NOKPROBE_SYMBOL(kprobe_skip_handlers_in_child_pidns);
++
+ /*
+  * Blacklist -- list of 'struct kprobe_blacklist_entry' to store info where
+  * kprobes can not probe.
+@@ -2721,6 +2743,11 @@ static int __init init_kprobes(void)
+ 	for (i = 0; i < KPROBE_TABLE_SIZE; i++)
+ 		INIT_HLIST_HEAD(&kprobe_table[i]);
+ 
++	child_pidns_exec_probe_addr =
++		kprobe_lookup_name("do_execveat_common", 0);
++	if (!child_pidns_exec_probe_addr)
++		pr_warn("Failed to resolve do_execveat_common; child PID namespace exec guard is inactive\n");
++
+ 	err = populate_kprobe_blacklist(__start_kprobe_blacklist,
+ 					__stop_kprobe_blacklist);
+ 	if (err)

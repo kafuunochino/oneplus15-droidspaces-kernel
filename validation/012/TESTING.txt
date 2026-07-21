@@ -1,0 +1,31 @@
+TEST ONLY - OnePlus 15 PLK110 / OxygenOS PLK110_16.0.9.400(CN01)
+
+Kernel release: 6.12.23-android16-5-gb2a876903b49-ab14541642-4k
+Kernel Image SHA-256: e0a6769ae18f03a4e6a924e6868afe3ec94e92c2a04456d39df95e7c3605e977
+SysV task fields: official Android kABI reserve slots at offsets 3424-3447.
+Slot 1 stores sysv_sem. Slot 2 stores a pointer to a separately allocated,
+native sysv_shm list head. Slot 3 remains an untouched vendor reserve.
+
+Validated before packaging:
+- task_struct size remains 5184 bytes.
+- 211 common top-level task_struct fields have zero offset changes.
+- 8901 common exports have zero non-Rust CRC changes versus the split baseline.
+- All changed export CRCs are Rust-only; zero non-Rust changes were found.
+- 539 stock modules have zero non-Rust mismatches versus the split baseline.
+- The only four stock-module mismatches are in unused system_dlkm/rust_binder.ko.
+- Child PID namespace tasks skip the incompatible OnePlus Midas cpufreq vendor hook; Android tasks are unchanged.
+
+This remains a diagnostic TEST image. Boot success and offline ABI checks do not
+prove that starting a Droidspaces container cannot trigger a reboot. Keep the
+stock boot image and fastboot rollback command ready.
+
+Additional 012 child-PID-namespace guard:
+- Static analysis of stock oplus_secure_guard_new.ko found an unchecked
+  find_task_by_vpid() result in do_execveat_common_entry_handler.  A
+  non-leader exec from a child PID namespace can produce NULL, followed by
+  pointer arithmetic at offset 0x40.
+- For child-PID-namespace tasks only, kprobe pre/post handlers at the exact
+  do_execveat_common target are skipped while the original instruction still
+  executes through the normal arm64 single-step path.
+- Android initial-PID-namespace tasks and every other kprobe target are
+  unchanged.

@@ -1,0 +1,22 @@
+module_files=539
+modules_with_versions=539
+total_requirements=32880
+parse_errors=0
+[pointer]
+matched=28707
+mismatched=4
+missing_from_gki=4169
+modules_with_mismatch=1
+MISMATCH pointer system_dlkm/rust_binder.ko _RNvMs0_NtCsdfZWD8DztAw_6kernel4pageNtB5_4Page8read_raw module=0x6916361e kernel=0x203b5b4e
+MISMATCH pointer system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task7current module=0x227c62ad kernel=0xe8a21e4d
+MISMATCH pointer system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task6policy module=0x1ca8eb04 kernel=0x70315c5d
+MISMATCH pointer system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task4euid module=0x0b7f78ce kernel=0x62ac3151
+[split]
+matched=28707
+mismatched=4
+missing_from_gki=4169
+modules_with_mismatch=1
+MISMATCH split system_dlkm/rust_binder.ko _RNvMs0_NtCsdfZWD8DztAw_6kernel4pageNtB5_4Page8read_raw module=0x6916361e kernel=0x96f3006f
+MISMATCH split system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task7current module=0x227c62ad kernel=0xef07ee78
+MISMATCH split system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task6policy module=0x1ca8eb04 kernel=0x57c83aa2
+MISMATCH split system_dlkm/rust_binder.ko _RNvMs1_NtCsdfZWD8DztAw_6kernel4taskNtB5_4Task4euid module=0x0b7f78ce kernel=0x94c0146a

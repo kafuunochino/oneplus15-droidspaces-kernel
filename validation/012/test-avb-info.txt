@@ -1,0 +1,26 @@
+Footer version:           1.0
+Image size:               100663296 bytes
+Original image size:      40308736 bytes
+VBMeta offset:            40308736
+VBMeta size:              768 bytes
+--
+Minimum libavb version:   1.0
+Header Block:             256 bytes
+Authentication Block:     0 bytes
+Auxiliary Block:          512 bytes
+Algorithm:                NONE
+Rollback Index:           0
+Flags:                    0
+Rollback Index Location:  0
+Release String:           'avbtool 1.3.0'
+Descriptors:
+    Hash descriptor:
+      Image Size:            40308736 bytes
+      Hash Algorithm:        sha256
+      Partition Name:        boot
+      Salt:                  1318efeaaf87fd4e734d3d5c0ca04758
+      Digest:                d518692b268fb74fe27ef5b61ffb113ce6546888130dab6c8e3da326c3acf0b1
+      Flags:                 0
+    Prop: com.android.build.boot.os_version -> '16'
+    Prop: com.android.build.boot.fingerprint -> 'qti/canoe/canoe:16/BP2A.250605.015/1782230840837:user/release-keys'
+    Prop: com.android.build.boot.security_patch -> '2026-07-01'

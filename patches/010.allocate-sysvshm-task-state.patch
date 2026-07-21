@@ -1,0 +1,118 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index b5c0b50ba..e0869a5aa 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1651,15 +1651,10 @@ struct task_struct {
+-	 * Keep the frozen task_struct layout intact by consuming the official
+-	 * Android kABI reserve slots. sysv_sem is 8 bytes and sysv_shm is 16
+-	 * bytes on arm64, so slots 1-3 are an exact fit.
++	 * Keep the frozen task_struct layout intact with Android kABI slots.
++	 * Slot 1 stores sysv_sem, slot 2 stores a pointer to separately allocated
++	 * sysv_shm task state, and slot 3 remains reserved for vendor modules.
+ 	 */
+ 	ANDROID_KABI_USE(1, struct sysv_sem sysvsem);
+-	_ANDROID_KABI_REPLACE(
+-		ANDROID_KABI_RESERVE(2);
+-		ANDROID_KABI_RESERVE(3),
+-		struct {
+-			struct sysv_shm sysvshm;
+-		}
+-	);
++	ANDROID_KABI_USE(2, struct sysv_shm *sysvshm);
++	ANDROID_KABI_RESERVE(3);
+ #else
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
+diff --git a/include/linux/shm.h b/include/linux/shm.h
+index 1d3d3ae95..31d87d89f 100644
+--- a/include/linux/shm.h
++++ b/include/linux/shm.h
+@@ -17,7 +17,7 @@ struct sysv_shm {
+ long do_shmat(int shmid, char __user *shmaddr, int shmflg, unsigned long *addr,
+ 	      unsigned long shmlba);
+ void exit_shm(struct task_struct *task);
+-#define shm_init_task(task) INIT_LIST_HEAD(&(task)->sysvshm.shm_clist)
++#define shm_init_task(task) ((task)->sysvshm = NULL)
+ #else
+ struct sysv_shm {
+ 	/* empty */
+diff --git a/ipc/shm.c b/ipc/shm.c
+index 99564c870..9acd16f06 100644
+--- a/ipc/shm.c
++++ b/ipc/shm.c
+@@ -436,21 +436,53 @@ void shm_destroy_orphaned(struct ipc_namespace *ns)
+ 	up_write(&shm_ids(ns).rwsem);
+ }
+ 
++static int shm_ensure_task_state(struct task_struct *task)
++{
++	struct sysv_shm *state;
++
++	if (likely(READ_ONCE(task->sysvshm)))
++		return 0;
++
++	state = kmalloc(sizeof(*state), GFP_KERNEL);
++	if (!state)
++		return -ENOMEM;
++	INIT_LIST_HEAD(&state->shm_clist);
++
++	/*
++	 * newseg() currently calls this only for current, but publish under
++	 * task_lock so exit_shm() and future callers have one clear lifetime
++	 * rule.  Losing a hypothetical race only costs this temporary object.
++	 */
++	task_lock(task);
++	if (!task->sysvshm) {
++		task->sysvshm = state;
++		state = NULL;
++	}
++	task_unlock(task);
++
++	kfree(state);
++	return 0;
++}
++
+ /* Locking assumes this will only be called with task == current */
+ void exit_shm(struct task_struct *task)
+ {
+ 	for (;;) {
+ 		struct shmid_kernel *shp;
+ 		struct ipc_namespace *ns;
++		struct sysv_shm *state;
+ 
+ 		task_lock(task);
++		state = task->sysvshm;
+ 
+-		if (list_empty(&task->sysvshm.shm_clist)) {
++		if (!state || list_empty(&state->shm_clist)) {
++			task->sysvshm = NULL;
+ 			task_unlock(task);
++			kfree(state);
+ 			break;
+ 		}
+ 
+-		shp = list_first_entry(&task->sysvshm.shm_clist, struct shmid_kernel,
++		shp = list_first_entry(&state->shm_clist, struct shmid_kernel,
+ 				shm_clist);
+ 
+ 		/*
+@@ -716,6 +748,10 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
+ 			ns->shm_tot + numpages > ns->shm_ctlall)
+ 		return -ENOSPC;
+ 
++	error = shm_ensure_task_state(current);
++	if (error)
++		return error;
++
+ 	shp = kmalloc(sizeof(*shp), GFP_KERNEL_ACCOUNT);
+ 	if (unlikely(!shp))
+ 		return -ENOMEM;
+@@ -779,7 +815,7 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
+ 	shp->ns = ns;
+ 
+ 	task_lock(current);
+-	list_add(&shp->shm_clist, &current->sysvshm.shm_clist);
++	list_add(&shp->shm_clist, &current->sysvshm->shm_clist);
+ 	task_unlock(current);
+ 
+ 	/*

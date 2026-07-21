@@ -1,0 +1,35 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1653,13 +1653,24 @@ struct task_struct {
+ 	 * bytes on arm64, so slots 1-3 are an exact fit.
+ 	 */
+ 	ANDROID_KABI_USE(1, struct sysv_sem sysvsem);
+-	_ANDROID_KABI_REPLACE(
+-		ANDROID_KABI_RESERVE(2);
+-		ANDROID_KABI_RESERVE(3),
+-		struct {
+-			struct sysv_shm sysvshm;
+-		}
+-	);
++#ifdef __GENKSYMS__
++	/* Preserve the exact legacy token stream used for module CRCs. */
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++#else
++	/*
++	 * At runtime use a genuine sysv_shm object.  The anonymous legacy
++	 * view keeps both reserve fields visible to BTF/layout tooling while
++	 * avoiding the split-list pointer alias used by the previous test.
++	 */
++	union {
++		struct {
++			u64 __kabi_reserved2;
++			u64 __kabi_reserved3;
++		};
++		struct sysv_shm sysvshm;
++	};
++#endif
+ #else
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);

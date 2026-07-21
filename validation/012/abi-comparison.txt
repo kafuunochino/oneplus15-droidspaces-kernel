@@ -1,0 +1,8 @@
+base_task_struct_size=5184
+new_task_struct_size=5184
+common_top_level_fields=211
+top_level_layout_changes=0
+common_symbols=8901
+crc_changes_total=23
+crc_changes_rust=23
+crc_changes_non_rust=0
