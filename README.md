@@ -89,6 +89,29 @@ GitHub Release 标记为 prerelease。详情见
 - Android 全局 SELinux 仍为 Enforcing，但 Droidspaces 模块把 `droidspacesd` 域设为
   permissive，会产生大量 AVC 审计日志。
 
+## Ubuntu 24.04 KDE 与 Adreno 840 原生 3D
+
+仓库提供一份适用于官方 Ubuntu 24.04 aarch64 容器的一键安装脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kafuunochino/oneplus15-droidspaces-kernel/main/scripts/ubuntu/droidspaces-kde-turnip-oneclick.sh | sudo bash
+```
+
+脚本安装 KDE Plasma X11、中文字体与输入法、PulseAudio 工具、图形测试工具，并安装
+经过固定 SHA-256 校验的 `mesa-for-android-container` Ubuntu Noble aarch64
+驱动。它不会安装 Anland、不会要求 `noseccomp`，也不会修改 Android SELinux。
+
+安装完成后停止容器，并在 Droidspaces 中使用以下配置：
+
+- Configure Termux:X11：开启
+- GPU Access：开启
+- Configure VirGL 3D Acceleration：关闭
+- Configure PulseAudio：开启
+
+本机 Adreno 840 使用原生 KGSL/Turnip 路径，不能与 `GALLIUM_DRIVER=virpipe`
+的 VirGL 路径混用。详细脚本见
+[`scripts/ubuntu/droidspaces-kde-turnip-oneclick.sh`](scripts/ubuntu/droidspaces-kde-turnip-oneclick.sh)。
+
 ## 下载、校验与刷入
 
 从仓库的 **Releases** 下载已经实机验证的 012 TEST，或独立的 013 Gaming
