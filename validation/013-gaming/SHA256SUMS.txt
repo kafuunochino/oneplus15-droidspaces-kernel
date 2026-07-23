@@ -1,0 +1,2 @@
+763e7f8f92b037e0c31f444d1249408e996197645e1b712ac3d9b99604da4ed0  boot-oneplus15-droidspaces-gki-r53-gaming-userns-ntsync-12f7cb678af1-stockcert-TEST.img
+6fee25ae94e31686366691f363f28b0fb5c721cae1f0b5a5d70a394b530e4a4b  final-gki-r53-gaming-userns-ntsync-test.tar.gz

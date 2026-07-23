@@ -1,0 +1,30 @@
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -42,6 +42,7 @@ CONFIG_CPUSETS_V1=y
+ CONFIG_CGROUP_CPUACCT=y
+ CONFIG_CGROUP_BPF=y
+ CONFIG_NAMESPACES=y
++CONFIG_USER_NS=y
+ CONFIG_RT_SOFTIRQ_AWARE_SCHED=y
+ # CONFIG_RD_BZIP2 is not set
+ # CONFIG_RD_LZMA is not set
+@@ -346,6 +347,7 @@ CONFIG_BLK_DEV_NVME=y
+ CONFIG_SRAM=y
+ CONFIG_UID_SYS_STATS=y
+ CONFIG_OPEN_DICE=m
++CONFIG_NTSYNC=y
+ CONFIG_VCPU_STALL_DETECTOR=m
+ CONFIG_SCSI=y
+ # CONFIG_SCSI_PROC_FS is not set
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -525,7 +525,6 @@ config OPEN_DICE
+ 
+ config NTSYNC
+ 	tristate "NT synchronization primitive emulation"
+-	depends on BROKEN
+ 	help
+ 	  This module provides kernel support for emulation of Windows NT
+ 	  synchronization primitives. It is not a hardware driver.

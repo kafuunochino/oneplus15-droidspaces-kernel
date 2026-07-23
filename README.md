@@ -27,6 +27,25 @@
 
 详细实机检查见 [`validation/012/LIVE-FUNCTIONAL-AUDIT.md`](validation/012/LIVE-FUNCTIONAL-AUDIT.md)。
 
+## 013 游戏兼容预发行版
+
+013 是从上述 012 稳定测试版派生的独立 **Gaming TEST**，不会取代已经实机验证的
+012。它额外开启：
+
+| 配置 | 作用 |
+| --- | --- |
+| `CONFIG_USER_NS=y` | 提供 UID/GID 映射和用户命名空间，供 Steam Runtime 的 pressure-vessel、bubblewrap 及部分 Linux 沙箱使用。它会扩大内核攻击面，因此只放在独立游戏测试版。 |
+| `CONFIG_NTSYNC=y` | 提供 Wine/Proton 使用的 Windows NT 事件、互斥量和信号量内核接口，减少部分游戏的用户态同步开销。 |
+| `CONFIG_VIRTUALIZATION=y` | Linux 通用虚拟化框架。 |
+| `CONFIG_KVM=y` | ARM64 硬件虚拟化支持；Android 未创建 `/dev/kvm` 时仍无法实际运行 KVM 虚拟机。 |
+
+013 同时保留 Droidspaces 所需的 `SYSVIPC`、`POSIX_MQUEUE`、PID/IPC namespace、
+`DEVTMPFS`、原厂模块证书和 011/012 的 OnePlus 子 PID namespace 兼容保护。
+
+该版本只完成了离线 ABI、模块、BOOT、AVB 和来源审计，尚未完成手机实机测试，因此
+GitHub Release 标记为 prerelease。详情见
+[`RELEASE-013-GAMING.md`](RELEASE-013-GAMING.md)。
+
 ## 012 内核改动
 
 - 启用 Droidspaces 必需的 `CONFIG_SYSVIPC`、`CONFIG_POSIX_MQUEUE`、
@@ -72,10 +91,11 @@
 
 ## 下载、校验与刷入
 
-从仓库的 **Releases** 下载最新 012 TEST 镜像及 `SHA256SUMS.txt`，在电脑校验：
+从仓库的 **Releases** 下载已经实机验证的 012 TEST，或独立的 013 Gaming
+prerelease。013 镜像校验示例：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\boot-oneplus15-droidspaces-gki-r53-kabi-pointer-state-vendor-guards-e0a6769ae18f-stockcert-TEST.img
+Get-FileHash -Algorithm SHA256 .\boot-oneplus15-droidspaces-gki-r53-gaming-userns-ntsync-12f7cb678af1-stockcert-TEST.img
 ```
 
 仅在 live fastboot 明确显示 Bootloader 已解锁、并已备份当前槽位原版 boot 后测试：
@@ -100,10 +120,11 @@ SukiSU Ultra 使用的 LKM / `init_boot` 不在本镜像内，本次只替换 `b
 
 - GKI common 基线：`b2a876903b495c444a94b16f50d1463ffe953957`
 - stock build number：`14541642`
-- `patches/`：按编号记录完整 001–012 修改序列。
+- `patches/`：按编号记录完整 001–013 修改序列。
 - `scripts/server/`：实际 Linux 构建、审计、打包与验证脚本。
 - `config/`：Droidspaces 请求配置和 stock KMI/security 基线。
 - `validation/012/`：最终 ABI、模块 CRC、AVB、哈希和实机检查结果。
+- `validation/013-gaming/`：游戏测试版的来源、ABI、模块和 BOOT 离线审计。
 
 完整 Qualcomm/OnePlus/AOSP 源码树和 Bazel 缓存占用数十 GB，不提交到 GitHub；脚本会在
 Linux 构建机上同步对应源码。旧的 GitHub Actions / OnePlus 源码实验不能复现当前 012
